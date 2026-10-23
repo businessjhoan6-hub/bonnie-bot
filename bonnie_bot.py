@@ -426,9 +426,31 @@ def run_loop():
         time.sleep(interval)
 
 
+def run_cloud_loop(minutes):
+    """GitHub Actions: revisa cada minuto durante `minutes` y sale (el workflow lanza la siguiente corrida)."""
+    deadline = time.time() + minutes * 60
+    log(f"Bot en marcha en la nube ({minutes} min).")
+    while time.time() < deadline:
+        interval = load_json(CONFIG_FILE, {}).get("check_every_seconds", 60)
+        try:
+            if check(quiet=True) == "ended":
+                return "ended"
+        except Exception as exc:
+            log(f"Error (reintento en {interval}s): {exc}")
+        time.sleep(interval)
+    log("Fin del turno en la nube.")
+    return 0
+
+
 def main():
     if "--loop" in sys.argv:
         return run_loop()
+    if "--cloud-loop" in sys.argv:
+        result = run_cloud_loop(int(sys.argv[sys.argv.index("--cloud-loop") + 1]))
+        if result == "ended" and os.environ.get("GITHUB_OUTPUT"):
+            with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+                f.write("ended=true\n")
+        return 0
     result = check(test="--test" in sys.argv, force="--force" in sys.argv)
     if result == "ended" and os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:

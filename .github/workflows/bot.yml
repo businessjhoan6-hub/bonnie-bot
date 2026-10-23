@@ -1,8 +1,10 @@
 name: BonnieBlue bot
 
+# Cada corrida se queda ~5.5 h revisando la tabla cada minuto y, antes de terminar,
+# lanza la siguiente. El cron es solo un respaldo por si la cadena se corta.
 on:
   schedule:
-    - cron: "*/5 * * * *"   # cada 5 min (GitHub puede atrasarlo unos minutos)
+    - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
       force:
@@ -21,9 +23,10 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 350
     env:
       TZ: America/Bogota
+      PYTHONUNBUFFERED: "1"
       TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
     steps:
@@ -42,8 +45,11 @@ jobs:
           key: state-${{ github.run_id }}
           restore-keys: state-
 
+      - if: inputs.force
+        run: python bonnie_bot.py --force
+
       - id: bot
-        run: python bonnie_bot.py ${{ inputs.force && '--force' || '' }}
+        run: python bonnie_bot.py --cloud-loop 330
 
       - uses: actions/cache/save@v4
         if: always()
@@ -51,11 +57,14 @@ jobs:
           path: state.json
           key: state-${{ github.run_id }}-${{ github.run_attempt }}
 
-      - run: cat bot.log
-        if: always()
+      # Relevo: lanza la próxima corrida (queda en espera hasta que esta termine)
+      - if: always() && steps.bot.outputs.ended != 'true'
+        run: gh workflow run bot.yml --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       # Cuando termina la leaderboard y ya se mandó el resultado final, se apaga solo
       - if: steps.bot.outputs.ended == 'true'
-        run: gh workflow disable bot.yml
+        run: gh workflow disable bot.yml --repo ${{ github.repository }}
         env:
           GH_TOKEN: ${{ github.token }}
