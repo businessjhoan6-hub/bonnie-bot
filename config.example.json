@@ -1,0 +1,14 @@
+{
+  "players": [
+    {"name": "Tú", "username": "Balnydlogon"},
+    {"name": "Alexander", "username": "AlexanderCS"}
+  ],
+  "telegram_token": "PON_AQUI_EL_TOKEN_DE_BOTFATHER",
+  "telegram_chat_id": "",
+  "points_per_dollar": 0.25,
+  "alert_gap_points": 50,
+  "summary_every_hours": 0.5,
+  "show_above": 2,
+  "ladder_steps": 5,
+  "check_every_seconds": 60
+}

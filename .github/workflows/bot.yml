@@ -1,0 +1,61 @@
+name: BonnieBlue bot
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # cada 5 min (GitHub puede atrasarlo unos minutos)
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Mandar el resumen ahora"
+        type: boolean
+        default: false
+
+concurrency:
+  group: bonnie-bot
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TZ: America/Bogota
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pillow
+
+      # state.json (último puesto conocido, último resumen) se guarda entre corridas en la caché
+      - uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: state-${{ github.run_id }}
+          restore-keys: state-
+
+      - id: bot
+        run: python bonnie_bot.py ${{ inputs.force && '--force' || '' }}
+
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: state.json
+          key: state-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - run: cat bot.log
+        if: always()
+
+      # Cuando termina la leaderboard y ya se mandó el resultado final, se apaga solo
+      - if: steps.bot.outputs.ended == 'true'
+        run: gh workflow disable bot.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
