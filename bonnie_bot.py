@@ -262,18 +262,22 @@ def render_text(board, players, alerts):
 
 # ---------------------------------------------------------------- telegram
 
+def multipart(params, files):
+    boundary = uuid.uuid4().hex
+    body = b""
+    for k, v in params.items():
+        body += f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
+    for k, p in files.items():
+        body += (f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"; filename="{p.name}"\r\n'
+                 f"Content-Type: image/png\r\n\r\n").encode() + p.read_bytes() + b"\r\n"
+    body += f"--{boundary}--\r\n".encode()
+    return body, {**HEADERS, "Content-Type": f"multipart/form-data; boundary={boundary}"}
+
+
 def telegram(cfg, method, params, files=None):
     url = TELEGRAM_URL.format(token=cfg["telegram_token"], method=method)
     if files:
-        boundary = uuid.uuid4().hex
-        body = b""
-        for k, v in params.items():
-            body += f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
-        for k, p in files.items():
-            body += (f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"; filename="{p.name}"\r\n'
-                     f"Content-Type: image/png\r\n\r\n").encode() + p.read_bytes() + b"\r\n"
-        body += f"--{boundary}--\r\n".encode()
-        headers = {**HEADERS, "Content-Type": f"multipart/form-data; boundary={boundary}"}
+        body, headers = multipart(params, files)
     else:
         body = urllib.parse.urlencode(params).encode("utf-8")
         headers = HEADERS
@@ -305,6 +309,65 @@ def send_telegram(cfg, text, image):
     telegram(cfg, "sendMessage", {"chat_id": chat, "text": text, "parse_mode": "HTML"})
 
 
+# ---------------------------------------------------------------- discord
+
+def to_discord(text):
+    """Pasa el HTML de Telegram al markdown de Discord."""
+    for a, b in (("<b>", "**"), ("</b>", "**"), ("<i>", "*"), ("</i>", "*"), ("<code>", "`"), ("</code>", "`")):
+        text = text.replace(a, b)
+    return html.unescape(text)
+
+
+def chunks(text, limit=1900):
+    """Discord acepta hasta 2000 caracteres por mensaje: corta por bloques (líneas en blanco)."""
+    parts, cur = [], ""
+    for block in text.split("\n\n"):
+        if cur and len(cur) + len(block) + 2 > limit:
+            parts.append(cur)
+            cur = block
+        else:
+            cur = f"{cur}\n\n{block}" if cur else block
+    return parts + [cur] if cur else parts
+
+
+def discord_post(webhook, payload, image=None):
+    if image:
+        body, headers = multipart({"payload_json": json.dumps(payload)}, {"files[0]": image})
+    else:
+        body, headers = json.dumps(payload).encode("utf-8"), {**HEADERS, "Content-Type": "application/json"}
+    req = urllib.request.Request(webhook, data=body, headers=headers)
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        resp.read()
+
+
+def send_discord(webhook, text, image):
+    parts = chunks(to_discord(text))
+    discord_post(webhook, {"content": parts[0]}, image)
+    for part in parts[1:]:
+        discord_post(webhook, {"content": part})
+
+
+def notify(cfg, text, image):
+    """Manda a Telegram y, si hay webhook, a Discord. Si uno falla, el otro igual sale.
+    Solo falla (y se reintenta) si no salió por ningún lado, para no duplicar en el que sí funcionó."""
+    errors, sent = [], 0
+    try:
+        send_telegram(cfg, text, image)
+        sent += 1
+    except Exception as exc:
+        errors.append(f"Telegram: {exc}")
+    if cfg.get("discord_webhook"):
+        try:
+            send_discord(cfg["discord_webhook"], text, image)
+            sent += 1
+        except Exception as exc:
+            errors.append(f"Discord: {exc}")
+    if errors and not sent:
+        raise RuntimeError(" | ".join(errors))
+    if errors:
+        log("Aviso: " + " | ".join(errors))
+
+
 # ---------------------------------------------------------------- main
 
 def check(test=False, force=False, quiet=False):
@@ -317,6 +380,8 @@ def check(test=False, force=False, quiet=False):
         cfg["telegram_token"] = os.environ["TELEGRAM_TOKEN"]
     if os.environ.get("TELEGRAM_CHAT_ID"):
         cfg["telegram_chat_id"] = os.environ["TELEGRAM_CHAT_ID"]
+    if os.environ.get("DISCORD_WEBHOOK"):
+        cfg["discord_webhook"] = os.environ["DISCORD_WEBHOOK"]
     if not test and (not cfg.get("telegram_token") or "PON_AQUI" in cfg["telegram_token"]):
         log("Completá 'telegram_token' en config.json (o corré con --test).")
         return 1
@@ -338,7 +403,7 @@ def check(test=False, force=False, quiet=False):
         if test:
             print(text)
             return "ended"
-        send_telegram(cfg, text, IMAGE_FILE)
+        notify(cfg, text, IMAGE_FILE)
         state["finished_board"] = board.get("id")
         STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
         log("Leaderboard terminada: resultado final enviado.")
@@ -389,7 +454,7 @@ def check(test=False, force=False, quiet=False):
         print(text)
         return 0
 
-    send_telegram(cfg, text, IMAGE_FILE)
+    notify(cfg, text, IMAGE_FILE)
     new_state["last_summary"] = datetime.now(timezone.utc).isoformat()
     STATE_FILE.write_text(json.dumps(new_state, indent=2), encoding="utf-8")
     log(f"Telegram enviado ({', '.join(reasons)}).")
