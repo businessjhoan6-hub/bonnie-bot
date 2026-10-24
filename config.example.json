@@ -1,7 +1,17 @@
 {
   "players": [
-    {"name": "Tú", "username": "Balnydlogon"},
-    {"name": "Alexander", "username": "AlexanderCS"}
+    {
+      "name": "Tú",
+      "username": "Balnydlogon"
+    },
+    {
+      "name": "Alexander",
+      "username": "AlexanderCS"
+    },
+    {
+      "name": "Candid",
+      "username": "CandidGuillemot595"
+    }
   ],
   "telegram_token": "PON_AQUI_EL_TOKEN_DE_BOTFATHER",
   "telegram_chat_id": "",
