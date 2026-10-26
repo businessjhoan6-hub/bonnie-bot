@@ -340,14 +340,28 @@ def discord_post(webhook, payload, image=None):
         resp.read()
 
 
-def send_discord(webhook, text, image):
+def send_discord(webhook, text, image, mentions=()):
+    """`mentions`: IDs de Discord a etiquetar (@) arriba del mensaje."""
+    tags = " ".join(f"<@{m}>" for m in mentions)
     parts = chunks(to_discord(text))
-    discord_post(webhook, {"content": parts[0]}, image)
+    if tags:
+        parts[0] = f"{tags}\n{parts[0]}"
+    allowed = {"users": list(mentions)}
+    discord_post(webhook, {"content": parts[0], "allowed_mentions": allowed}, image)
     for part in parts[1:]:
-        discord_post(webhook, {"content": part})
+        discord_post(webhook, {"content": part, "allowed_mentions": allowed})
 
 
-def notify(cfg, text, image):
+def owners_to_ping(cfg, alerts):
+    """Dueños (discord_id) de los jugadores nombrados en alguna alerta."""
+    ids = []
+    for p in cfg["players"]:
+        if p.get("discord_id") and any(p["name"] in a for a in alerts) and p["discord_id"] not in ids:
+            ids.append(p["discord_id"])
+    return ids
+
+
+def notify(cfg, text, image, mentions=()):
     """Manda a Telegram y, si hay webhook, a Discord. Si uno falla, el otro igual sale.
     Solo falla (y se reintenta) si no salió por ningún lado, para no duplicar en el que sí funcionó."""
     errors, sent = [], 0
@@ -358,7 +372,7 @@ def notify(cfg, text, image):
         errors.append(f"Telegram: {exc}")
     if cfg.get("discord_webhook"):
         try:
-            send_discord(cfg["discord_webhook"], text, image)
+            send_discord(cfg["discord_webhook"], text, image, mentions)
             sent += 1
         except Exception as exc:
             errors.append(f"Discord: {exc}")
@@ -403,7 +417,7 @@ def check(test=False, force=False, quiet=False):
         if test:
             print(text)
             return "ended"
-        notify(cfg, text, IMAGE_FILE)
+        notify(cfg, text, IMAGE_FILE, owners_to_ping(cfg, alerts))
         state["finished_board"] = board.get("id")
         STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
         log("Leaderboard terminada: resultado final enviado.")
@@ -454,7 +468,7 @@ def check(test=False, force=False, quiet=False):
         print(text)
         return 0
 
-    notify(cfg, text, IMAGE_FILE)
+    notify(cfg, text, IMAGE_FILE, owners_to_ping(cfg, alerts))
     new_state["last_summary"] = datetime.now(timezone.utc).isoformat()
     STATE_FILE.write_text(json.dumps(new_state, indent=2), encoding="utf-8")
     log(f"Telegram enviado ({', '.join(reasons)}).")
