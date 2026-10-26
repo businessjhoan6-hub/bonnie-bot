@@ -74,7 +74,7 @@ def time_left(board):
     end = datetime.fromisoformat(board["end_date"].replace("Z", "+00:00"))
     left = end - datetime.now(timezone.utc)
     if left.total_seconds() <= 0:
-        return "terminó", end
+        return "ended", end
     return f"{left.days}d {left.seconds // 3600}h {(left.seconds % 3600) // 60}m", end
 
 
@@ -166,15 +166,15 @@ def render_image(board, players, path):
         d.line([(x, 0), (x, 170)], fill=c)
     left, end = time_left(board)
     d.text((PAD, 28), "BONNIE BLUE  ·  LEADERBOARD", font=font(46, True), fill="white")
-    d.text((PAD, 96), f"Termina en {left}   ·   cierre {end.astimezone():%d/%m %H:%M}", font=font(28), fill="white")
-    d.text((PAD, 132), f"Actualizado {datetime.now():%d/%m %H:%M}", font=font(22), fill=(255, 255, 255))
+    d.text((PAD, 96), f"Ends in {left}   ·   closes {end.astimezone():%m/%d %H:%M}", font=font(28), fill="white")
+    d.text((PAD, 132), f"Updated {datetime.now():%m/%d %H:%M}", font=font(22), fill=(255, 255, 255))
 
     y = 200
     cols = [PAD + 24, PAD + 130, PAD + 470, PAD + 650, PAD + 830]
     for p in players:
         if not p["found"]:
             d.rounded_rectangle([PAD, y, W - PAD, y + 120], 24, fill=CARD)
-            d.text((PAD + 30, y + 38), f"{p['name']} ({p['username']}) no está en el top 50", font=font(30, True), fill=RED)
+            d.text((PAD + 30, y + 38), f"{p['name']} ({p['username']}) is not in the top 50", font=font(30, True), fill=RED)
             y += 120 + PAD
             continue
 
@@ -184,17 +184,17 @@ def render_image(board, players, path):
         # Cabecera de la tarjeta
         d.text((PAD + 30, y + 22), p["name"].upper(), font=font(34, True), fill=TEXT)
         d.text((PAD + 30, y + 66), p["username"], font=font(24), fill=MUTED)
-        d.text((PAD + 30, y + 98), f"Wager total {money(p['wagered'])}", font=font(24), fill=MUTED)
+        d.text((PAD + 30, y + 98), f"Total wagered {money(p['wagered'])}", font=font(24), fill=MUTED)
         rank = f"#{p['position']}"
         rw = d.textlength(rank, font=font(84, True))
         d.text((W - PAD - 30 - rw, y + 6), rank, font=font(84, True), fill=PINK)
-        sub = f"{pts(p['points'])} pts  ·  premio {money(p['prize'])}"
+        sub = f"{pts(p['points'])} pts  ·  prize {money(p['prize'])}"
         sw = d.textlength(sub, font=font(26, True))
         d.text((W - PAD - 30 - sw, y + 108), sub, font=font(26, True), fill=GREEN)
 
         # Tabla de vecinos
         ty = y + 150
-        for x, label in zip(cols, ["PUESTO", "USUARIO", "PUNTOS", "DIFERENCIA", "WAGER"]):
+        for x, label in zip(cols, ["RANK", "USER", "POINTS", "GAP", "WAGER"]):
             d.text((x, ty + 16), label, font=font(20, True), fill=MUTED)
         ty += ROW_H
         for n in p["neighbors"]:
@@ -202,11 +202,11 @@ def render_image(board, players, path):
                 d.rounded_rectangle([PAD + 12, ty + 4, W - PAD - 12, ty + ROW_H - 4], 14, fill=ROW_ME)
             fg = "white" if n["is_me"] else TEXT
             uname = n["username"] if len(n["username"]) <= 18 else n["username"][:17] + "…"
-            d.text((cols[0], ty + 12), f"{n['position']}°", font=font(26, True), fill=fg)
+            d.text((cols[0], ty + 12), f"#{n['position']}", font=font(26, True), fill=fg)
             d.text((cols[1], ty + 12), uname, font=font(26, n["is_me"]), fill=fg)
             d.text((cols[2], ty + 12), pts(n["points"]), font=font(26), fill=fg)
             if n["is_me"]:
-                d.text((cols[3], ty + 12), "TÚ" if p is players[0] else "ÉL", font=font(26, True), fill=fg)
+                d.text((cols[3], ty + 12), "HERE", font=font(26, True), fill=fg)
             elif n["gap"] > 0:
                 d.text((cols[3], ty + 12), f"+{pts(n['gap'])}", font=font(26), fill=RED)
                 d.text((cols[4], ty + 12), money(n["wager"]), font=font(26, True), fill=TEXT)
@@ -216,7 +216,7 @@ def render_image(board, players, path):
             ty += ROW_H
         y += card_h + PAD
 
-    d.text((PAD, H - 60), "WAGER (diferencia × 4):  arriba = para alcanzarlo  ·  abajo = lo que le basta para alcanzarte",
+    d.text((PAD, H - 60), "WAGER (gap × 4):  above = needed to pass them  ·  below = what they need to pass you",
            font=font(22), fill=MUTED)
     img.save(path)
 
@@ -229,34 +229,36 @@ def render_text(board, players, alerts):
     if alerts:
         out += [f"<b>{html.escape(a)}</b>" for a in alerts] + [""]
     out += [
-        "🏆 <b>BONNIE BLUE · LEADERBOARD MENSUAL</b>",
-        f"⏳ Termina en <b>{left}</b> (cierre {end.astimezone():%d/%m %H:%M})",
+        "🏆 <b>BONNIE BLUE · MONTHLY LEADERBOARD</b>",
+        f"⏳ Ends in <b>{left}</b> (closes {end.astimezone():%m/%d %H:%M})",
     ]
     for p in players:
         out.append("")
-        name = f"{html.escape(p['name'])} — <code>{html.escape(p['username'])}</code>"
+        name = html.escape(p["name"])
+        if p["name"] != p["username"]:
+            name += f" — <code>{html.escape(p['username'])}</code>"
         if not p["found"]:
-            out.append(f"👤 <b>{name}</b>\n⚠️ No aparece en el top 50")
+            out.append(f"👤 <b>{name}</b>\n⚠️ Not in the top 50")
             continue
         out.append(f"👤 <b>{name}</b>")
-        out.append(f"🎯 Puesto <b>{p['position']}°</b> · {pts(p['points'])} pts · premio <b>{money(p['prize'])}</b>")
-        out.append(f"💵 Wager acumulado: {money(p['wagered'])}")
+        out.append(f"🎯 Rank <b>#{p['position']}</b> · {pts(p['points'])} pts · prize <b>{money(p['prize'])}</b>")
+        out.append(f"💵 Total wagered: {money(p['wagered'])}")
         if p["points_gained"]:
-            out.append(f"📈 Desde la última revisión: +{pts(p['points_gained'])} pts")
+            out.append(f"📈 Since last check: +{pts(p['points_gained'])} pts")
         if p["ladder"]:
-            out.append("🪜 <b>Wager real para pasar a cada puesto:</b>")
+            out.append("🪜 <b>Real wager needed to pass each rank:</b>")
             for n in p["ladder"]:
                 extra = n["prize"] - p["prize"]
-                out.append(f"   • <b>{n['position']}°</b> ({html.escape(n['username'])}): "
-                           f"<b>{money(n['wager'])}</b> → premio {money(n['prize'])} (+{money(extra)})")
+                out.append(f"   • <b>#{n['position']}</b> ({html.escape(n['username'])}): "
+                           f"<b>{money(n['wager'])}</b> → prize {money(n['prize'])} (+{money(extra)})")
         downs = [n for n in p["neighbors"] if n["gap"] < 0]
         if downs:
-            out.append("⬇️ <b>Vienen detrás:</b>")
+            out.append("⬇️ <b>Chasing from behind:</b>")
             for n in sorted(downs, key=lambda n: -n["gap"]):
                 icon = "🔥" if -n["gap"] < 50 else "•"
-                out.append(f"   {icon} {n['position']}° {html.escape(n['username'])}: a {pts(-n['gap'])} pts "
-                           f"(le bastan {money(n['wager'])} de wager)")
-    out += ["", f"<i>Datos de la web sincronizados {datetime.fromisoformat(board['last_synced_at'].replace('Z', '+00:00')).astimezone():%H:%M}</i>"]
+                out.append(f"   {icon} #{n['position']} {html.escape(n['username'])}: {pts(-n['gap'])} pts behind "
+                           f"(needs {money(n['wager'])} wager to pass)")
+    out += ["", f"<i>Site data synced at {datetime.fromisoformat(board['last_synced_at'].replace('Z', '+00:00')).astimezone():%H:%M}</i>"]
     return "\n".join(out)
 
 
@@ -409,9 +411,9 @@ def check(test=False, force=False, quiet=False):
     if board.get("status") != "IN_PROGRESS" or datetime.now(timezone.utc) >= end:
         if state.get("finished_board") == board.get("id"):
             return "ended"
-        alerts = ["🏁 ¡TERMINÓ LA LEADERBOARD! Resultado final:"] + [
-            f"{p['name']}: {p['position']}° → premio {money(p['prize'])}" if p["found"]
-            else f"{p['name']}: fuera del top 50" for p in players]
+        alerts = ["🏁 THE LEADERBOARD IS OVER! Final results:"] + [
+            f"{p['name']}: #{p['position']} → prize {money(p['prize'])}" if p["found"]
+            else f"{p['name']}: outside the top 50" for p in players]
         render_image(board, players, IMAGE_FILE)
         text = render_text(board, players, alerts)
         if test:
@@ -429,17 +431,17 @@ def check(test=False, force=False, quiet=False):
         last = prev.get(p["username"], {})
         if not p["found"]:
             if not last.get("missing"):
-                alerts.append(f"⚠️ {p['name']} salió del top 50")
+                alerts.append(f"⚠️ {p['name']} dropped out of the top 50")
             new_players[p["username"]] = {"missing": True}
             continue
         if p["last_position"] is not None and p["position"] != p["last_position"]:
             if p["position"] < p["last_position"]:
-                alerts.append(f"🟢 {p['name']}: subió del {p['last_position']}° al {p['position']}°")
+                alerts.append(f"🟢 {p['name']}: moved up from #{p['last_position']} to #{p['position']}")
             else:
-                alerts.append(f"🔴 {p['name']}: bajó del {p['last_position']}° al {p['position']}°")
+                alerts.append(f"🔴 {p['name']}: dropped from #{p['last_position']} to #{p['position']}")
         danger = p["gap_below"] is not None and p["gap_below"] < cfg["alert_gap_points"]
         if danger and not last.get("danger"):
-            alerts.append(f"🚨 {p['name']}: el de abajo está a solo {pts(p['gap_below'])} pts")
+            alerts.append(f"🚨 {p['name']}: the player below is only {pts(p['gap_below'])} pts behind")
         new_players[p["username"]] = {"position": p["position"], "points": p["points"], "danger": danger}
 
     reasons = list(alerts)
