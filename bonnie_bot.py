@@ -355,10 +355,12 @@ def send_discord(webhook, text, image, mentions=()):
 
 
 def owners_to_ping(cfg, alerts):
-    """Dueños (discord_id) de los jugadores nombrados en alguna alerta."""
+    """Dueños (discord_id) a etiquetar: todos si `tag_all_owners` está activo, si no solo los
+    de los jugadores nombrados en alguna alerta. Cada dueño una sola vez."""
+    tag_all = cfg.get("tag_all_owners", True)
     ids = []
     for p in cfg["players"]:
-        if p.get("discord_id") and any(p["name"] in a for a in alerts) and p["discord_id"] not in ids:
+        if p.get("discord_id") and (tag_all or any(p["name"] in a for a in alerts)) and p["discord_id"] not in ids:
             ids.append(p["discord_id"])
     return ids
 
