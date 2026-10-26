@@ -2,11 +2,13 @@
   "players": [
     {
       "name": "Tú",
-      "username": "Balnydlogon"
+      "username": "Balnydlogon",
+      "discord_id": "1421210379207446609"
     },
     {
       "name": "Alexander",
-      "username": "AlexanderCS"
+      "username": "AlexanderCS",
+      "discord_id": "713166187541954601"
     },
     {
       "name": "Candid",
